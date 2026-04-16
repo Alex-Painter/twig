@@ -26,74 +26,101 @@ const (
 	modeHelp
 )
 
+// bgColor is the slate-black background used throughout the TUI.
+const bgColor = lipgloss.Color("235")
+
 // Styles for the TUI
 var (
+	baseStyle = lipgloss.NewStyle().
+			Background(bgColor).
+			Foreground(lipgloss.Color("252"))
+
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("42")).
+			Background(bgColor).
+			Foreground(lipgloss.Color("39")).
 			MarginBottom(1)
 
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
+			Background(bgColor).
+			Foreground(lipgloss.Color("39")).
 			Bold(true)
 
 	normalStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("252"))
 
 	mainMarkerStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("214")).
 			Bold(true)
 
 	dirtyStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("203"))
 
 	pathStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("243"))
 
 	commitStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("245"))
 
 	timeStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("239"))
 
 	aheadStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("114"))
 
 	behindStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("209"))
 
 	unknownStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("243"))
 
 	sessionAttachedStyle = lipgloss.NewStyle().
+				Background(bgColor).
 				Foreground(lipgloss.Color("114"))
 
 	sessionDetachedStyle = lipgloss.NewStyle().
+				Background(bgColor).
 				Foreground(lipgloss.Color("245"))
 
 	helpStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("241")).
 			MarginTop(1)
 
 	inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
+			Background(bgColor).
+			Foreground(lipgloss.Color("39"))
 
 	promptStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("252"))
 
 	successStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("114"))
 
 	errorStyle = lipgloss.NewStyle().
+			Background(bgColor).
 			Foreground(lipgloss.Color("203"))
 
 	modalStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("42")).
+			BorderForeground(lipgloss.Color("39")).
+			Background(bgColor).
 			Padding(1, 2)
 
 	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
+			Background(bgColor).
+			Foreground(lipgloss.Color("39")).
 			Bold(true)
 )
 
@@ -114,6 +141,8 @@ type Model struct {
 	busyMessage     string
 	spinner         spinner.Model
 	filter          string
+	width           int
+	height          int
 	// lastAction stores the last action that failed, for retry support.
 	// Nil if no retryable error is present.
 	lastAction retryableAction
@@ -166,7 +195,7 @@ func New(cfg *config.Config) Model {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	s.Style = lipgloss.NewStyle().Background(bgColor).Foreground(lipgloss.Color("39"))
 
 	return Model{
 		config:          cfg,
@@ -208,6 +237,11 @@ func (m Model) filteredWorktrees() []git.Worktree {
 // Update handles messages and updates the model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -610,6 +644,32 @@ func (m Model) renderHelp() string {
 
 // View renders the TUI.
 func (m Model) View() string {
+	return m.wrapBackground(m.renderContent())
+}
+
+// wrapBackground wraps content in the base background style, padding each line
+// to the terminal width so the background extends across the full screen.
+func (m Model) wrapBackground(content string) string {
+	if m.width == 0 {
+		// Before WindowSizeMsg arrives, just render without padding
+		return baseStyle.Render(content)
+	}
+
+	lines := strings.Split(content, "\n")
+	var out strings.Builder
+	for i, line := range lines {
+		// Pad each line to the full width with background
+		padded := baseStyle.Width(m.width).Render(line)
+		out.WriteString(padded)
+		if i < len(lines)-1 {
+			out.WriteString("\n")
+		}
+	}
+	return out.String()
+}
+
+// renderContent builds the unstyled view body.
+func (m Model) renderContent() string {
 	var b strings.Builder
 
 	// Title
@@ -618,7 +678,8 @@ func (m Model) View() string {
 
 	// Error display
 	if m.err != nil {
-		b.WriteString(fmt.Sprintf("Error: %v\n\n", m.err))
+		b.WriteString(errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
+		b.WriteString("\n\n")
 	}
 
 	// Busy indicator (spinner + message)
@@ -688,16 +749,18 @@ func (m Model) View() string {
 	} else if m.filter != "" {
 		b.WriteString(promptStyle.Render("Filter: "))
 		b.WriteString(inputStyle.Render(m.filter))
-		b.WriteString(helpStyle.Render(fmt.Sprintf("  (press / to edit)")))
+		b.WriteString(helpStyle.Render("  (press / to edit)"))
 		b.WriteString("\n")
 	}
 
 	// Worktree list (filtered)
 	filtered := m.filteredWorktrees()
 	if len(m.worktrees) == 0 && m.err == nil {
-		b.WriteString("No worktrees found.\n")
+		b.WriteString(normalStyle.Render("No worktrees found."))
+		b.WriteString("\n")
 	} else if len(filtered) == 0 {
-		b.WriteString(helpStyle.Render("No worktrees match filter.\n"))
+		b.WriteString(helpStyle.Render("No worktrees match filter."))
+		b.WriteString("\n")
 	} else {
 		for i, wt := range filtered {
 			cursor := "  "
@@ -707,7 +770,9 @@ func (m Model) View() string {
 
 			// Format the row
 			row := m.formatWorktreeRow(wt, i == m.cursor)
-			b.WriteString(cursor + row + "\n")
+			b.WriteString(normalStyle.Render(cursor))
+			b.WriteString(row)
+			b.WriteString("\n")
 		}
 	}
 
