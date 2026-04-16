@@ -1,0 +1,74 @@
+version: 2
+
+project_name: twig
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: twig
+    main: .
+    binary: twig
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+archives:
+  - id: twig
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: Alex-Painter
+    name: twig
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: twig
+    repository:
+      owner: Alex-Painter
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/Alex-Painter/twig"
+    description: "TUI to manage git worktrees and tmux sessions"
+    license: "MIT"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    dependencies:
+      - name: git
+      - name: tmux
+      - name: gh
+        type: optional
+    test: |
+      system "#{bin}/twig", "--version"
+    install: |
+      bin.install "twig"
