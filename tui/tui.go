@@ -22,6 +22,7 @@ const (
 	modeCreate
 	modeDeleteConfirm
 	modeDeleteForceConfirm
+	modeFilter
 )
 
 // Styles for the TUI
@@ -102,6 +103,7 @@ type Model struct {
 	busy            bool
 	busyMessage     string
 	spinner         spinner.Model
+	filter          string
 }
 
 // worktreesMsg is sent when worktrees are loaded.
@@ -164,6 +166,22 @@ func (m Model) loadWorktrees() tea.Msg {
 	return worktreesMsg{worktrees: worktrees, tmuxSessions: tmuxSessions, err: err}
 }
 
+// filteredWorktrees returns the worktrees filtered by the current filter string.
+// If filter is empty, returns all worktrees.
+func (m Model) filteredWorktrees() []git.Worktree {
+	if m.filter == "" {
+		return m.worktrees
+	}
+	filter := strings.ToLower(m.filter)
+	var result []git.Worktree
+	for _, wt := range m.worktrees {
+		if strings.Contains(strings.ToLower(wt.Branch), filter) {
+			result = append(result, wt)
+		}
+	}
+	return result
+}
+
 // Update handles messages and updates the model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -191,6 +209,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleDeleteConfirm(msg)
 		}
 
+		// Handle filter mode
+		if m.mode == modeFilter {
+			return m.handleFilterInput(msg)
+		}
+
 		// Handle list mode
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -200,7 +223,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.worktrees)-1 {
+			if m.cursor < len(m.filteredWorktrees())-1 {
 				m.cursor++
 			}
 		case "r":
@@ -214,23 +237,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.busyMessage = "Fetching all remotes..."
 			return m, m.fetchAll
 		case "p":
-			if len(m.worktrees) == 0 {
+			wts := m.filteredWorktrees()
+			if len(wts) == 0 {
 				return m, nil
 			}
-			wt := m.worktrees[m.cursor]
+			wt := wts[m.cursor]
 			m.statusMessage = ""
 			m.busy = true
 			m.busyMessage = fmt.Sprintf("Pulling '%s'...", wt.Branch)
 			return m, m.pullWorktree(wt)
+		case "/":
+			m.mode = modeFilter
+			m.statusMessage = ""
 		case "n":
 			m.mode = modeCreate
 			m.input = ""
 			m.statusMessage = ""
 		case "d":
-			if len(m.worktrees) == 0 {
+			wts := m.filteredWorktrees()
+			if len(wts) == 0 {
 				return m, nil
 			}
-			wt := m.worktrees[m.cursor]
+			wt := wts[m.cursor]
 			if wt.IsMain {
 				m.statusMessage = "Cannot delete main clone"
 				m.statusIsError = true
@@ -250,9 +278,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.busy = false
 		m.busyMessage = ""
-		// Reset cursor if out of bounds
-		if m.cursor >= len(m.worktrees) {
-			m.cursor = max(0, len(m.worktrees)-1)
+		// Reset cursor if out of bounds (based on filtered results)
+		filtered := m.filteredWorktrees()
+		if m.cursor >= len(filtered) {
+			m.cursor = max(0, len(filtered)-1)
 		}
 
 	case createResultMsg:
@@ -322,11 +351,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		if m.cursor >= len(m.worktrees) {
+		wts := m.filteredWorktrees()
+		if m.cursor >= len(wts) {
 			m.mode = modeList
 			return m, nil
 		}
-		wt := m.worktrees[m.cursor]
+		wt := wts[m.cursor]
 		force := m.mode == modeDeleteForceConfirm
 		m.mode = modeList
 		m.busy = true
@@ -337,6 +367,47 @@ func (m Model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeList
 		return m, nil
 	}
+	return m, nil
+}
+
+// handleFilterInput handles keyboard input in filter mode.
+func (m Model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter, tea.KeyEsc:
+		m.mode = modeList
+		// Reset cursor if now out of bounds
+		filtered := m.filteredWorktrees()
+		if m.cursor >= len(filtered) {
+			m.cursor = max(0, len(filtered)-1)
+		}
+		return m, nil
+
+	case tea.KeyBackspace:
+		if len(m.filter) > 0 {
+			m.filter = m.filter[:len(m.filter)-1]
+			// Reset cursor since filtered list may change
+			m.cursor = 0
+		}
+		return m, nil
+
+	case tea.KeyRunes:
+		m.filter += string(msg.Runes)
+		m.cursor = 0
+		return m, nil
+
+	case tea.KeySpace:
+		m.filter += " "
+		m.cursor = 0
+		return m, nil
+	}
+
+	// ctrl+u to clear filter
+	if msg.String() == "ctrl+u" {
+		m.filter = ""
+		m.cursor = 0
+		return m, nil
+	}
+
 	return m, nil
 }
 
@@ -466,11 +537,27 @@ func (m Model) View() string {
 		return b.String()
 	}
 
-	// Worktree list
+	// Filter input line (above list when in filter mode or when filter is active)
+	if m.mode == modeFilter {
+		b.WriteString(promptStyle.Render("Filter: "))
+		b.WriteString(inputStyle.Render(m.filter))
+		b.WriteString(inputStyle.Render("█"))
+		b.WriteString("\n")
+	} else if m.filter != "" {
+		b.WriteString(promptStyle.Render("Filter: "))
+		b.WriteString(inputStyle.Render(m.filter))
+		b.WriteString(helpStyle.Render(fmt.Sprintf("  (press / to edit)")))
+		b.WriteString("\n")
+	}
+
+	// Worktree list (filtered)
+	filtered := m.filteredWorktrees()
 	if len(m.worktrees) == 0 && m.err == nil {
 		b.WriteString("No worktrees found.\n")
+	} else if len(filtered) == 0 {
+		b.WriteString(helpStyle.Render("No worktrees match filter.\n"))
 	} else {
-		for i, wt := range m.worktrees {
+		for i, wt := range filtered {
 			cursor := "  "
 			if i == m.cursor {
 				cursor = "> "
@@ -483,7 +570,11 @@ func (m Model) View() string {
 	}
 
 	// Help
-	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • p: pull • r: refresh • q: quit"))
+	if m.mode == modeFilter {
+		b.WriteString(helpStyle.Render("type to filter • ctrl+u: clear • Enter/Esc: done"))
+	} else {
+		b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • p: pull • /: filter • r: refresh • q: quit"))
+	}
 
 	return b.String()
 }
