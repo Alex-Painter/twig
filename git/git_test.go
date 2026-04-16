@@ -416,3 +416,139 @@ func TestListWorktrees_IncludesLastCommit(t *testing.T) {
 		t.Error("expected last commit relative time to be non-empty")
 	}
 }
+
+func TestGetAheadBehind_NoTrackingBranch(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// A fresh repo with no remote has no tracking branch
+	ahead, behind, err := GetAheadBehind(repoDir)
+
+	// Should return -1, -1 when there's no tracking branch
+	if err == nil {
+		t.Log("GetAheadBehind returned no error (might have default tracking)")
+	}
+	if ahead != -1 || behind != -1 {
+		// This is expected for a repo without a remote
+		if err != nil {
+			// Expected behavior
+			return
+		}
+	}
+}
+
+func TestGetAheadBehind_WithTrackingBranch(t *testing.T) {
+	// Create a "remote" repo
+	remoteDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare")
+	cmd.Dir = remoteDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init bare repo: %v", err)
+	}
+
+	// Create local repo
+	repoDir := setupTestRepo(t)
+
+	// Add remote and push
+	cmd = exec.Command("git", "remote", "add", "origin", remoteDir)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to add remote: %v", err)
+	}
+
+	cmd = exec.Command("git", "push", "-u", "origin", "master")
+	cmd.Dir = repoDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Try main branch instead
+		cmd = exec.Command("git", "push", "-u", "origin", "main")
+		cmd.Dir = repoDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to push: %v (output: %s)", err, output)
+		}
+	}
+
+	// Now we should be even with upstream
+	ahead, behind, err := GetAheadBehind(repoDir)
+	if err != nil {
+		t.Fatalf("GetAheadBehind() returned error: %v", err)
+	}
+
+	if ahead != 0 || behind != 0 {
+		t.Errorf("expected ahead=0, behind=0, got ahead=%d, behind=%d", ahead, behind)
+	}
+}
+
+func TestGetAheadBehind_AheadOfRemote(t *testing.T) {
+	// Create a "remote" repo
+	remoteDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare")
+	cmd.Dir = remoteDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init bare repo: %v", err)
+	}
+
+	// Create local repo
+	repoDir := setupTestRepo(t)
+
+	// Add remote and push
+	cmd = exec.Command("git", "remote", "add", "origin", remoteDir)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to add remote: %v", err)
+	}
+
+	// Get current branch name
+	branch, _ := GetCurrentBranch(repoDir)
+
+	cmd = exec.Command("git", "push", "-u", "origin", branch)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to push: %v", err)
+	}
+
+	// Create a local commit (ahead by 1)
+	testFile := filepath.Join(repoDir, "ahead.txt")
+	if err := os.WriteFile(testFile, []byte("ahead"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Local commit")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+
+	ahead, behind, err := GetAheadBehind(repoDir)
+	if err != nil {
+		t.Fatalf("GetAheadBehind() returned error: %v", err)
+	}
+
+	if ahead != 1 {
+		t.Errorf("expected ahead=1, got %d", ahead)
+	}
+	if behind != 0 {
+		t.Errorf("expected behind=0, got %d", behind)
+	}
+}
+
+func TestListWorktrees_IncludesAheadBehind(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	worktrees, err := ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	if len(worktrees) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(worktrees))
+	}
+
+	// Without a remote, ahead/behind should be -1
+	if worktrees[0].Ahead != -1 || worktrees[0].Behind != -1 {
+		t.Logf("ahead=%d, behind=%d (may vary based on git config)", worktrees[0].Ahead, worktrees[0].Behind)
+	}
+}

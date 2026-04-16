@@ -4,6 +4,7 @@ package git
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,14 @@ type Worktree struct {
 
 	// LastCommit contains info about the most recent commit.
 	LastCommit CommitInfo
+
+	// Ahead is the number of commits ahead of the remote tracking branch.
+	// -1 indicates unknown (no tracking branch or error).
+	Ahead int
+
+	// Behind is the number of commits behind the remote tracking branch.
+	// -1 indicates unknown (no tracking branch or error).
+	Behind int
 }
 
 // CommitInfo contains information about a commit.
@@ -53,7 +62,7 @@ func ListWorktrees(repoPath string) ([]Worktree, error) {
 		return nil, err
 	}
 
-	// Populate dirty status and last commit for each worktree
+	// Populate dirty status, last commit, and ahead/behind for each worktree
 	for i := range worktrees {
 		dirty, err := IsDirty(worktrees[i].Path)
 		if err == nil {
@@ -63,6 +72,15 @@ func ListWorktrees(repoPath string) ([]Worktree, error) {
 		commit, err := GetLastCommit(worktrees[i].Path)
 		if err == nil {
 			worktrees[i].LastCommit = commit
+		}
+
+		ahead, behind, err := GetAheadBehind(worktrees[i].Path)
+		if err == nil {
+			worktrees[i].Ahead = ahead
+			worktrees[i].Behind = behind
+		} else {
+			worktrees[i].Ahead = -1
+			worktrees[i].Behind = -1
 		}
 	}
 
@@ -175,4 +193,43 @@ func GetLastCommit(worktreePath string) (CommitInfo, error) {
 	}
 
 	return info, nil
+}
+
+// AheadBehind contains the number of commits ahead and behind the remote.
+type AheadBehind struct {
+	Ahead  int
+	Behind int
+}
+
+// GetAheadBehind returns the number of commits ahead and behind the remote tracking branch.
+// Returns (-1, -1) if there's no tracking branch or an error occurs.
+func GetAheadBehind(worktreePath string) (int, int, error) {
+	// Use rev-list to count commits ahead and behind
+	// This requires a tracking branch to be set
+	cmd := exec.Command("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+	cmd.Dir = worktreePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		// No tracking branch or other error
+		return -1, -1, err
+	}
+
+	// Output format: "behind\tahead\n"
+	parts := strings.Fields(strings.TrimSpace(string(output)))
+	if len(parts) != 2 {
+		return -1, -1, nil
+	}
+
+	var behind, ahead int
+	_, err = fmt.Sscanf(parts[0], "%d", &behind)
+	if err != nil {
+		return -1, -1, err
+	}
+	_, err = fmt.Sscanf(parts[1], "%d", &ahead)
+	if err != nil {
+		return -1, -1, err
+	}
+
+	return ahead, behind, nil
 }

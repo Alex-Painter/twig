@@ -41,6 +41,15 @@ var (
 	timeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("239"))
 
+	aheadStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("114"))
+
+	behindStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("209"))
+
+	unknownStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("243"))
+
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			MarginTop(1)
@@ -158,6 +167,9 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		dirty = dirtyStyle.Render("*")
 	}
 
+	// Ahead/behind indicator
+	aheadBehind := m.formatAheadBehind(wt, selected)
+
 	// Last commit info - truncate message if too long
 	commitMsg := wt.LastCommit.Message
 	if len(commitMsg) > 30 {
@@ -180,7 +192,42 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		commitTime = timeStyle.Render(commitTime)
 	}
 
-	return fmt.Sprintf("%-30s %s %-32s %s", branch, dirty, commitMsg, commitTime)
+	return fmt.Sprintf("%-30s %s %-8s %-32s %s", branch, dirty, aheadBehind, commitMsg, commitTime)
+}
+
+// formatAheadBehind formats the ahead/behind indicator.
+func (m Model) formatAheadBehind(wt git.Worktree, selected bool) string {
+	if wt.Ahead == -1 || wt.Behind == -1 {
+		if selected {
+			return selectedStyle.Render("?")
+		}
+		return unknownStyle.Render("?")
+	}
+
+	var parts []string
+	if wt.Ahead > 0 {
+		s := fmt.Sprintf("↑%d", wt.Ahead)
+		if selected {
+			s = selectedStyle.Render(s)
+		} else {
+			s = aheadStyle.Render(s)
+		}
+		parts = append(parts, s)
+	}
+	if wt.Behind > 0 {
+		s := fmt.Sprintf("↓%d", wt.Behind)
+		if selected {
+			s = selectedStyle.Render(s)
+		} else {
+			s = behindStyle.Render(s)
+		}
+		parts = append(parts, s)
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ")
 }
 
 // Run starts the TUI application.
