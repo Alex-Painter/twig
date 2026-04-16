@@ -13,13 +13,13 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Configuration file (`~/.config/twig/config.toml`)
 - [x] List all worktrees with branch names and paths
 - [x] Visual indicator for main repository clone (★)
+- [x] Show dirty/clean status for each worktree (*)
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
 
 ### Planned
 
-- [ ] Show dirty/clean status for each worktree
 - [ ] Show last commit info
 - [ ] Show commits ahead/behind remote
 - [ ] Show tmux session status (attached/detached)

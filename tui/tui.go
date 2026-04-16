@@ -30,6 +30,9 @@ var (
 			Foreground(lipgloss.Color("214")).
 			Bold(true)
 
+	dirtyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203"))
+
 	pathStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243"))
 
@@ -144,6 +147,12 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		branch = mainMarkerStyle.Render("★ " + branch)
 	}
 
+	// Dirty indicator
+	dirty := " "
+	if wt.IsDirty {
+		dirty = dirtyStyle.Render("*")
+	}
+
 	// Shorten path for display
 	path := wt.Path
 	home := filepath.Dir(filepath.Dir(m.config.Repo)) // Go up two levels for shorter paths
@@ -164,7 +173,7 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		path = pathStyle.Render(path)
 	}
 
-	return fmt.Sprintf("%-30s %s", branch, path)
+	return fmt.Sprintf("%-30s %s %s", branch, dirty, path)
 }
 
 // Run starts the TUI application.

@@ -19,10 +19,14 @@ type Worktree struct {
 
 	// IsMain indicates if this is the main repository clone (not a worktree).
 	IsMain bool
+
+	// IsDirty indicates if the worktree has uncommitted changes.
+	IsDirty bool
 }
 
 // ListWorktrees returns all worktrees for the repository at repoPath.
 // The main repository is included in the list with IsMain set to true.
+// Each worktree's dirty status is also populated.
 func ListWorktrees(repoPath string) ([]Worktree, error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = repoPath
@@ -32,7 +36,20 @@ func ListWorktrees(repoPath string) ([]Worktree, error) {
 		return nil, err
 	}
 
-	return parseWorktreeList(output, repoPath)
+	worktrees, err := parseWorktreeList(output, repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate dirty status for each worktree
+	for i := range worktrees {
+		dirty, err := IsDirty(worktrees[i].Path)
+		if err == nil {
+			worktrees[i].IsDirty = dirty
+		}
+	}
+
+	return worktrees, nil
 }
 
 // parseWorktreeList parses the output of `git worktree list --porcelain`.
@@ -101,4 +118,19 @@ func GetCurrentBranch(repoPath string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+// IsDirty returns true if the worktree has uncommitted changes.
+// This includes staged changes, unstaged changes, and untracked files.
+func IsDirty(worktreePath string) (bool, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = worktreePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+
+	// If there's any output, the worktree is dirty
+	return len(strings.TrimSpace(string(output))) > 0, nil
 }

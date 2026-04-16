@@ -238,3 +238,112 @@ func TestGetCurrentBranch(t *testing.T) {
 		t.Errorf("GetCurrentBranch() = %q, want 'main' or 'master'", branch)
 	}
 }
+
+func TestIsDirty_CleanRepo(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	dirty, err := IsDirty(repoDir)
+	if err != nil {
+		t.Fatalf("IsDirty() returned error: %v", err)
+	}
+
+	if dirty {
+		t.Error("expected clean repo to not be dirty")
+	}
+}
+
+func TestIsDirty_UnstagedChanges(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Modify an existing file
+	testFile := filepath.Join(repoDir, "README.md")
+	if err := os.WriteFile(testFile, []byte("# Modified"), 0644); err != nil {
+		t.Fatalf("failed to modify file: %v", err)
+	}
+
+	dirty, err := IsDirty(repoDir)
+	if err != nil {
+		t.Fatalf("IsDirty() returned error: %v", err)
+	}
+
+	if !dirty {
+		t.Error("expected repo with unstaged changes to be dirty")
+	}
+}
+
+func TestIsDirty_StagedChanges(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Create and stage a new file
+	testFile := filepath.Join(repoDir, "new-file.txt")
+	if err := os.WriteFile(testFile, []byte("new content"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	cmd := exec.Command("git", "add", "new-file.txt")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to stage file: %v", err)
+	}
+
+	dirty, err := IsDirty(repoDir)
+	if err != nil {
+		t.Fatalf("IsDirty() returned error: %v", err)
+	}
+
+	if !dirty {
+		t.Error("expected repo with staged changes to be dirty")
+	}
+}
+
+func TestIsDirty_UntrackedFiles(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Create an untracked file
+	testFile := filepath.Join(repoDir, "untracked.txt")
+	if err := os.WriteFile(testFile, []byte("untracked"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	dirty, err := IsDirty(repoDir)
+	if err != nil {
+		t.Fatalf("IsDirty() returned error: %v", err)
+	}
+
+	if !dirty {
+		t.Error("expected repo with untracked files to be dirty")
+	}
+}
+
+func TestListWorktrees_IncludesDirtyStatus(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Initially clean
+	worktrees, err := ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	if len(worktrees) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(worktrees))
+	}
+
+	if worktrees[0].IsDirty {
+		t.Error("expected clean worktree to not be dirty")
+	}
+
+	// Make it dirty
+	testFile := filepath.Join(repoDir, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("dirty"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	worktrees, err = ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	if !worktrees[0].IsDirty {
+		t.Error("expected dirty worktree to be marked dirty")
+	}
+}
