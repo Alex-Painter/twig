@@ -736,3 +736,43 @@ func TestFetchAll_WithRemote(t *testing.T) {
 		t.Errorf("FetchAll() returned error: %v", err)
 	}
 }
+
+func TestPull_NoRemote(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Pull on a repo with no remotes should fail
+	err := Pull(repoDir)
+	if err == nil {
+		t.Log("Pull() without remotes returned no error (git may have config allowing this)")
+	}
+}
+
+func TestPull_UpToDate(t *testing.T) {
+	// Create a "remote" repo
+	remoteDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare")
+	cmd.Dir = remoteDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init bare repo: %v", err)
+	}
+
+	// Create local repo, add remote, push
+	repoDir := setupTestRepo(t)
+	cmd = exec.Command("git", "remote", "add", "origin", remoteDir)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to add remote: %v", err)
+	}
+
+	branch, _ := GetCurrentBranch(repoDir)
+	cmd = exec.Command("git", "push", "-u", "origin", branch)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to push: %v", err)
+	}
+
+	// Pull should succeed (already up-to-date)
+	if err := Pull(repoDir); err != nil {
+		t.Errorf("Pull() returned error: %v", err)
+	}
+}

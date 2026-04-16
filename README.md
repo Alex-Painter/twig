@@ -23,6 +23,7 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Post-create hooks for dependency installation
 - [x] Delete worktree with safety checks (d) - kills tmux session, warns on dirty, blocks main
 - [x] Fetch all remotes (f)
+- [x] Pull current branch (p)
 - [x] Loading spinner for async operations
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
@@ -86,6 +87,7 @@ twig
 | `n` | Create new worktree |
 | `d` | Delete selected worktree |
 | `f` | Fetch all remotes |
+| `p` | Pull selected worktree's branch |
 | `r` | Refresh worktree list |
 | `q` | Quit |
 

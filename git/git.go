@@ -345,3 +345,15 @@ func FetchAll(repoPath string) error {
 	}
 	return nil
 }
+
+// Pull runs git pull in the given worktree directory.
+func Pull(worktreePath string) error {
+	cmd := exec.Command("git", "pull")
+	cmd.Dir = worktreePath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to pull: %s", output)
+	}
+	return nil
+}

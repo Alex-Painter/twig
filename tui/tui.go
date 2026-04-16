@@ -129,6 +129,12 @@ type fetchResultMsg struct {
 	err error
 }
 
+// pullResultMsg is sent when pull completes.
+type pullResultMsg struct {
+	branch string
+	err    error
+}
+
 // New creates a new TUI model.
 func New(cfg *config.Config) Model {
 	tmuxClient := tmux.NewClient()
@@ -207,6 +213,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.busy = true
 			m.busyMessage = "Fetching all remotes..."
 			return m, m.fetchAll
+		case "p":
+			if len(m.worktrees) == 0 {
+				return m, nil
+			}
+			wt := m.worktrees[m.cursor]
+			m.statusMessage = ""
+			m.busy = true
+			m.busyMessage = fmt.Sprintf("Pulling '%s'...", wt.Branch)
+			return m, m.pullWorktree(wt)
 		case "n":
 			m.mode = modeCreate
 			m.input = ""
@@ -283,6 +298,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusIsError = true
 		} else {
 			m.statusMessage = "Fetched all remotes"
+			m.statusIsError = false
+		}
+		m.busyMessage = "Refreshing..."
+		return m, m.loadWorktrees
+
+	case pullResultMsg:
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to pull: %v", msg.err)
+			m.statusIsError = true
+		} else {
+			m.statusMessage = fmt.Sprintf("Pulled '%s'", msg.branch)
 			m.statusIsError = false
 		}
 		m.busyMessage = "Refreshing..."
@@ -374,6 +400,14 @@ func (m Model) fetchAll() tea.Msg {
 	return fetchResultMsg{err: err}
 }
 
+// pullWorktree pulls the given worktree.
+func (m Model) pullWorktree(wt git.Worktree) tea.Cmd {
+	return func() tea.Msg {
+		err := git.Pull(wt.Path)
+		return pullResultMsg{branch: wt.Branch, err: err}
+	}
+}
+
 // View renders the TUI.
 func (m Model) View() string {
 	var b strings.Builder
@@ -449,7 +483,7 @@ func (m Model) View() string {
 	}
 
 	// Help
-	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • r: refresh • q: quit"))
+	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • p: pull • r: refresh • q: quit"))
 
 	return b.String()
 }
