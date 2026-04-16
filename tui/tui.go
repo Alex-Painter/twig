@@ -30,11 +30,11 @@ const (
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("212")).
+			Foreground(lipgloss.Color("42")).
 			MarginBottom(1)
 
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212")).
+			Foreground(lipgloss.Color("42")).
 			Bold(true)
 
 	normalStyle = lipgloss.NewStyle().
@@ -76,7 +76,7 @@ var (
 			MarginTop(1)
 
 	inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212"))
+			Foreground(lipgloss.Color("42"))
 
 	promptStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252"))
@@ -89,11 +89,11 @@ var (
 
 	modalStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("212")).
+			BorderForeground(lipgloss.Color("42")).
 			Padding(1, 2)
 
 	keyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212")).
+			Foreground(lipgloss.Color("42")).
 			Bold(true)
 )
 
@@ -166,7 +166,7 @@ func New(cfg *config.Config) Model {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 
 	return Model{
 		config:          cfg,
