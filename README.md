@@ -18,14 +18,13 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Show commits ahead/behind remote (↑↓ indicators, ? when unknown)
 - [x] Show tmux session status (attached/detached)
 - [x] Create worktree from branch name (n)
+- [x] Create worktree from GitHub PR number (#123)
 - [x] Auto-create tmux session with configured windows
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
 
 ### Planned
-
-- [ ] Create worktree from GitHub PR number (#123)
 - [ ] Post-create hooks for dependency installation
 - [ ] Delete worktree with safety checks (d)
 - [ ] Fetch all remotes (f)
