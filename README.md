@@ -20,12 +20,12 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Create worktree from branch name (n)
 - [x] Create worktree from GitHub PR number (#123)
 - [x] Auto-create tmux session with configured windows
+- [x] Post-create hooks for dependency installation
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
 
 ### Planned
-- [ ] Post-create hooks for dependency installation
 - [ ] Delete worktree with safety checks (d)
 - [ ] Fetch all remotes (f)
 - [ ] Pull current branch (p)

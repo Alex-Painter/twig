@@ -10,6 +10,7 @@ import (
 	"github.com/Alex-Painter/twig/config"
 	"github.com/Alex-Painter/twig/git"
 	"github.com/Alex-Painter/twig/github"
+	"github.com/Alex-Painter/twig/hooks"
 	"github.com/Alex-Painter/twig/tmux"
 )
 
@@ -21,6 +22,7 @@ type Manager struct {
 	config       *config.Config
 	tmuxClient   *tmux.Client
 	githubClient *github.Client
+	hookRunner   *hooks.Runner
 }
 
 // NewManager creates a new worktree manager.
@@ -29,22 +31,31 @@ func NewManager(cfg *config.Config, tmuxClient *tmux.Client) *Manager {
 		config:       cfg,
 		tmuxClient:   tmuxClient,
 		githubClient: github.NewClient(cfg.Repo),
+		hookRunner:   hooks.NewRunner(cfg.HooksDir),
 	}
+}
+
+// CreateResult contains the result of creating a worktree.
+type CreateResult struct {
+	// Path is the path to the created worktree.
+	Path string
+	// HookResult contains the result of running post-create hooks.
+	HookResult hooks.HookResult
 }
 
 // Create creates a new worktree and tmux session for the given branch or PR.
 // If input matches #123 pattern, it fetches the branch name from the PR.
-// Returns the path to the created worktree.
-func (m *Manager) Create(input string) (string, error) {
+// Returns the result including path and hook output.
+func (m *Manager) Create(input string) (CreateResult, error) {
 	branchName, err := m.resolveBranchName(input)
 	if err != nil {
-		return "", err
+		return CreateResult{}, err
 	}
 
 	// Create the git worktree
 	worktreePath, err := git.CreateWorktree(m.config.Repo, m.config.WorktreeDir, branchName)
 	if err != nil {
-		return "", err
+		return CreateResult{}, err
 	}
 
 	// Create the tmux session
@@ -53,10 +64,16 @@ func (m *Manager) Create(input string) (string, error) {
 	if err != nil {
 		// Worktree created but tmux session failed - still return the path
 		// The user can create the session manually
-		return worktreePath, err
+		return CreateResult{Path: worktreePath}, err
 	}
 
-	return worktreePath, nil
+	// Run post-create hook
+	hookResult := m.hookRunner.RunPostCreate(worktreePath)
+
+	return CreateResult{
+		Path:       worktreePath,
+		HookResult: hookResult,
+	}, nil
 }
 
 // resolveBranchName resolves the input to a branch name.

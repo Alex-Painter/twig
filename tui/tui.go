@@ -108,7 +108,7 @@ type worktreesMsg struct {
 // createResultMsg is sent when worktree creation completes.
 type createResultMsg struct {
 	branchName string
-	path       string
+	result     worktree.CreateResult
 	err        error
 }
 
@@ -179,8 +179,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = fmt.Sprintf("Failed to create worktree: %v", msg.err)
 			m.statusIsError = true
 		} else {
+			// Build success message
 			m.statusMessage = fmt.Sprintf("Created worktree for '%s'", msg.branchName)
-			m.statusIsError = false
+
+			// Add hook result if any
+			hookMsg := msg.result.HookResult.FormatResult()
+			if hookMsg != "" {
+				m.statusMessage += "\n" + hookMsg
+			}
+
+			// Check if hook failed
+			if msg.result.HookResult.Error != nil {
+				m.statusIsError = true
+			} else {
+				m.statusIsError = false
+			}
 		}
 		m.mode = modeList
 		return m, m.loadWorktrees
@@ -227,8 +240,8 @@ func (m Model) handleCreateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // createWorktree returns a command that creates a worktree.
 func (m Model) createWorktree(branchName string) tea.Cmd {
 	return func() tea.Msg {
-		path, err := m.worktreeManager.Create(branchName)
-		return createResultMsg{branchName: branchName, path: path, err: err}
+		result, err := m.worktreeManager.Create(branchName)
+		return createResultMsg{branchName: branchName, result: result, err: err}
 	}
 }
 
