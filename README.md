@@ -34,6 +34,14 @@ A TUI application to manage git worktrees and tmux sessions.
 
 ## Installation
 
+### Homebrew (recommended)
+
+```bash
+brew install Alex-Painter/tap/twig
+```
+
+### From source
+
 ```bash
 # Clone the repository
 git clone https://github.com/Alex-Painter/twig.git
