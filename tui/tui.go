@@ -7,6 +7,7 @@ import (
 
 	"github.com/Alex-Painter/twig/config"
 	"github.com/Alex-Painter/twig/git"
+	"github.com/Alex-Painter/twig/tmux"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -50,6 +51,12 @@ var (
 	unknownStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243"))
 
+	sessionAttachedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("114"))
+
+	sessionDetachedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245"))
+
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			MarginTop(1)
@@ -57,22 +64,26 @@ var (
 
 // Model represents the TUI state.
 type Model struct {
-	config    *config.Config
-	worktrees []git.Worktree
-	cursor    int
-	err       error
+	config       *config.Config
+	worktrees    []git.Worktree
+	tmuxSessions map[string]tmux.SessionStatus
+	tmuxClient   *tmux.Client
+	cursor       int
+	err          error
 }
 
 // worktreesMsg is sent when worktrees are loaded.
 type worktreesMsg struct {
-	worktrees []git.Worktree
-	err       error
+	worktrees    []git.Worktree
+	tmuxSessions map[string]tmux.SessionStatus
+	err          error
 }
 
 // New creates a new TUI model.
 func New(cfg *config.Config) Model {
 	return Model{
-		config: cfg,
+		config:     cfg,
+		tmuxClient: tmux.NewClient(),
 	}
 }
 
@@ -81,10 +92,11 @@ func (m Model) Init() tea.Cmd {
 	return m.loadWorktrees
 }
 
-// loadWorktrees fetches the list of worktrees.
+// loadWorktrees fetches the list of worktrees and tmux session status.
 func (m Model) loadWorktrees() tea.Msg {
 	worktrees, err := git.ListWorktrees(m.config.Repo)
-	return worktreesMsg{worktrees: worktrees, err: err}
+	tmuxSessions := m.tmuxClient.ListSessions()
+	return worktreesMsg{worktrees: worktrees, tmuxSessions: tmuxSessions, err: err}
 }
 
 // Update handles messages and updates the model.
@@ -108,6 +120,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case worktreesMsg:
 		m.worktrees = msg.worktrees
+		m.tmuxSessions = msg.tmuxSessions
 		m.err = msg.err
 		// Reset cursor if out of bounds
 		if m.cursor >= len(m.worktrees) {
@@ -192,7 +205,34 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		commitTime = timeStyle.Render(commitTime)
 	}
 
-	return fmt.Sprintf("%-30s %s %-8s %-32s %s", branch, dirty, aheadBehind, commitMsg, commitTime)
+	// Tmux session status
+	sessionStatus := m.formatSessionStatus(wt, selected)
+
+	return fmt.Sprintf("%-30s %s %-8s %-10s %-32s %s", branch, dirty, aheadBehind, sessionStatus, commitMsg, commitTime)
+}
+
+// formatSessionStatus formats the tmux session status indicator.
+func (m Model) formatSessionStatus(wt git.Worktree, selected bool) string {
+	sessionName := m.config.SessionName(wt.Branch)
+	status, exists := m.tmuxSessions[sessionName]
+
+	if !exists {
+		return ""
+	}
+
+	statusStr := status.String()
+	if selected {
+		return selectedStyle.Render(statusStr)
+	}
+
+	switch status {
+	case tmux.SessionAttached:
+		return sessionAttachedStyle.Render(statusStr)
+	case tmux.SessionDetached:
+		return sessionDetachedStyle.Render(statusStr)
+	default:
+		return ""
+	}
 }
 
 // formatAheadBehind formats the ahead/behind indicator.
