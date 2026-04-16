@@ -9,6 +9,7 @@ import (
 	"github.com/Alex-Painter/twig/git"
 	"github.com/Alex-Painter/twig/tmux"
 	"github.com/Alex-Painter/twig/worktree"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -19,6 +20,8 @@ type viewMode int
 const (
 	modeList viewMode = iota
 	modeCreate
+	modeDeleteConfirm
+	modeDeleteForceConfirm
 )
 
 // Styles for the TUI
@@ -85,17 +88,20 @@ var (
 
 // Model represents the TUI state.
 type Model struct {
-	config           *config.Config
-	worktrees        []git.Worktree
-	tmuxSessions     map[string]tmux.SessionStatus
-	tmuxClient       *tmux.Client
-	worktreeManager  *worktree.Manager
-	cursor           int
-	err              error
-	mode             viewMode
-	input            string
-	statusMessage    string
-	statusIsError    bool
+	config          *config.Config
+	worktrees       []git.Worktree
+	tmuxSessions    map[string]tmux.SessionStatus
+	tmuxClient      *tmux.Client
+	worktreeManager *worktree.Manager
+	cursor          int
+	err             error
+	mode            viewMode
+	input           string
+	statusMessage   string
+	statusIsError   bool
+	busy            bool
+	busyMessage     string
+	spinner         spinner.Model
 }
 
 // worktreesMsg is sent when worktrees are loaded.
@@ -112,20 +118,32 @@ type createResultMsg struct {
 	err        error
 }
 
+// deleteResultMsg is sent when worktree deletion completes.
+type deleteResultMsg struct {
+	branch string
+	err    error
+}
+
 // New creates a new TUI model.
 func New(cfg *config.Config) Model {
 	tmuxClient := tmux.NewClient()
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+
 	return Model{
 		config:          cfg,
 		tmuxClient:      tmuxClient,
 		worktreeManager: worktree.NewManager(cfg, tmuxClient),
 		mode:            modeList,
+		spinner:         s,
 	}
 }
 
 // Init initializes the model and returns an initial command.
 func (m Model) Init() tea.Cmd {
-	return m.loadWorktrees
+	return tea.Batch(m.loadWorktrees, m.spinner.Tick)
 }
 
 // loadWorktrees fetches the list of worktrees and tmux session status.
@@ -138,10 +156,28 @@ func (m Model) loadWorktrees() tea.Msg {
 // Update handles messages and updates the model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
+		// Busy state: ignore all input except ctrl+c
+		if m.busy {
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		// Handle input mode
 		if m.mode == modeCreate {
 			return m.handleCreateInput(msg)
+		}
+
+		// Handle delete confirmation modes
+		if m.mode == modeDeleteConfirm || m.mode == modeDeleteForceConfirm {
+			return m.handleDeleteConfirm(msg)
 		}
 
 		// Handle list mode
@@ -158,10 +194,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.statusMessage = ""
+			m.busy = true
+			m.busyMessage = "Refreshing..."
 			return m, m.loadWorktrees
 		case "n":
 			m.mode = modeCreate
 			m.input = ""
+			m.statusMessage = ""
+		case "d":
+			if len(m.worktrees) == 0 {
+				return m, nil
+			}
+			wt := m.worktrees[m.cursor]
+			if wt.IsMain {
+				m.statusMessage = "Cannot delete main clone"
+				m.statusIsError = true
+				return m, nil
+			}
+			if wt.IsDirty {
+				m.mode = modeDeleteForceConfirm
+			} else {
+				m.mode = modeDeleteConfirm
+			}
 			m.statusMessage = ""
 		}
 
@@ -169,6 +223,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.worktrees = msg.worktrees
 		m.tmuxSessions = msg.tmuxSessions
 		m.err = msg.err
+		m.busy = false
+		m.busyMessage = ""
 		// Reset cursor if out of bounds
 		if m.cursor >= len(m.worktrees) {
 			m.cursor = max(0, len(m.worktrees)-1)
@@ -196,10 +252,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.mode = modeList
+		m.busyMessage = "Refreshing..."
+		return m, m.loadWorktrees
+
+	case deleteResultMsg:
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to delete worktree: %v", msg.err)
+			m.statusIsError = true
+		} else {
+			m.statusMessage = fmt.Sprintf("Deleted worktree '%s'", msg.branch)
+			m.statusIsError = false
+		}
+		m.mode = modeList
+		m.busyMessage = "Refreshing..."
 		return m, m.loadWorktrees
 	}
 
 	return m, nil
+}
+
+// handleDeleteConfirm handles keyboard input in delete confirmation mode.
+func (m Model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		if m.cursor >= len(m.worktrees) {
+			m.mode = modeList
+			return m, nil
+		}
+		wt := m.worktrees[m.cursor]
+		force := m.mode == modeDeleteForceConfirm
+		m.mode = modeList
+		m.busy = true
+		m.busyMessage = fmt.Sprintf("Deleting worktree '%s'...", wt.Branch)
+		return m, m.deleteWorktree(wt, force)
+
+	case "n", "N", "esc", "q":
+		m.mode = modeList
+		return m, nil
+	}
+	return m, nil
+}
+
+// deleteWorktree returns a command that deletes a worktree.
+func (m Model) deleteWorktree(wt git.Worktree, force bool) tea.Cmd {
+	return func() tea.Msg {
+		err := m.worktreeManager.Delete(wt, force)
+		return deleteResultMsg{branch: wt.Branch, err: err}
+	}
 }
 
 // handleCreateInput handles keyboard input in create mode.
@@ -212,6 +311,9 @@ func (m Model) handleCreateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		branchName := m.input
 		m.input = ""
+		m.mode = modeList
+		m.busy = true
+		m.busyMessage = fmt.Sprintf("Creating worktree for '%s'...", branchName)
 		return m, m.createWorktree(branchName)
 
 	case tea.KeyEsc:
@@ -258,6 +360,14 @@ func (m Model) View() string {
 		b.WriteString(fmt.Sprintf("Error: %v\n\n", m.err))
 	}
 
+	// Busy indicator (spinner + message)
+	if m.busyMessage != "" {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" ")
+		b.WriteString(promptStyle.Render(m.busyMessage))
+		b.WriteString("\n\n")
+	}
+
 	// Status message
 	if m.statusMessage != "" {
 		if m.statusIsError {
@@ -278,6 +388,23 @@ func (m Model) View() string {
 		return b.String()
 	}
 
+	// Delete confirmation
+	if m.mode == modeDeleteConfirm || m.mode == modeDeleteForceConfirm {
+		if m.cursor < len(m.worktrees) {
+			wt := m.worktrees[m.cursor]
+			if m.mode == modeDeleteForceConfirm {
+				b.WriteString(errorStyle.Render(fmt.Sprintf("WARNING: '%s' has uncommitted changes!", wt.Branch)))
+				b.WriteString("\n")
+				b.WriteString(promptStyle.Render(fmt.Sprintf("Force delete worktree '%s'? [y/N]", wt.Branch)))
+			} else {
+				b.WriteString(promptStyle.Render(fmt.Sprintf("Delete worktree '%s'? [y/N]", wt.Branch)))
+			}
+			b.WriteString("\n\n")
+			b.WriteString(helpStyle.Render("y: confirm • n/Esc: cancel"))
+		}
+		return b.String()
+	}
+
 	// Worktree list
 	if len(m.worktrees) == 0 && m.err == nil {
 		b.WriteString("No worktrees found.\n")
@@ -295,7 +422,7 @@ func (m Model) View() string {
 	}
 
 	// Help
-	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • r: refresh • q: quit"))
+	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • r: refresh • q: quit"))
 
 	return b.String()
 }

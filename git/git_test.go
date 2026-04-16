@@ -634,3 +634,64 @@ func TestCreateWorktree_ExistingLocalBranch(t *testing.T) {
 		t.Errorf("path = %q, want %q", path, expectedPath)
 	}
 }
+
+func TestDeleteWorktree(t *testing.T) {
+	repoDir := setupTestRepo(t)
+	worktreeDir := t.TempDir()
+
+	// Create a worktree
+	path, err := CreateWorktree(repoDir, worktreeDir, "to-delete")
+	if err != nil {
+		t.Fatalf("CreateWorktree() returned error: %v", err)
+	}
+
+	// Verify it exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Fatal("worktree directory should exist")
+	}
+
+	// Delete it
+	if err := DeleteWorktree(repoDir, path, false); err != nil {
+		t.Fatalf("DeleteWorktree() returned error: %v", err)
+	}
+
+	// Verify it's gone
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("worktree directory should not exist after delete")
+	}
+
+	// Verify it's removed from worktree list
+	worktrees, _ := ListWorktrees(repoDir)
+	for _, wt := range worktrees {
+		if wt.Branch == "to-delete" {
+			t.Error("to-delete branch should not be in worktree list")
+		}
+	}
+}
+
+func TestDeleteWorktree_WithUncommittedChanges(t *testing.T) {
+	repoDir := setupTestRepo(t)
+	worktreeDir := t.TempDir()
+
+	// Create a worktree
+	path, err := CreateWorktree(repoDir, worktreeDir, "dirty-branch")
+	if err != nil {
+		t.Fatalf("CreateWorktree() returned error: %v", err)
+	}
+
+	// Make uncommitted changes
+	testFile := filepath.Join(path, "dirty.txt")
+	if err := os.WriteFile(testFile, []byte("dirty"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	// Delete without force should fail
+	if err := DeleteWorktree(repoDir, path, false); err == nil {
+		t.Error("expected delete without force to fail for dirty worktree")
+	}
+
+	// Delete with force should succeed
+	if err := DeleteWorktree(repoDir, path, true); err != nil {
+		t.Fatalf("expected force delete to succeed: %v", err)
+	}
+}

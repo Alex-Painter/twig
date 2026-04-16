@@ -230,3 +230,39 @@ func TestCreateSession_Error(t *testing.T) {
 		t.Error("expected CreateSession() to return error")
 	}
 }
+
+func TestKillSession_Exists(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux has-session -t test-session", "", nil)
+	mock.SetResponse("tmux kill-session -t test-session", "", nil)
+
+	client := NewClientWithRunner(mock)
+	err := client.KillSession("test-session")
+	if err != nil {
+		t.Errorf("KillSession() returned error: %v", err)
+	}
+}
+
+func TestKillSession_NotExists(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux has-session -t nonexistent", "", errors.New("no session"))
+
+	client := NewClientWithRunner(mock)
+	err := client.KillSession("nonexistent")
+	// Should be a no-op if session doesn't exist
+	if err != nil {
+		t.Errorf("KillSession() should not error when session doesn't exist: %v", err)
+	}
+}
+
+func TestKillSession_Error(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux has-session -t test-session", "", nil)
+	mock.SetResponse("tmux kill-session -t test-session", "", errors.New("kill failed"))
+
+	client := NewClientWithRunner(mock)
+	err := client.KillSession("test-session")
+	if err == nil {
+		t.Error("expected KillSession() to return error")
+	}
+}

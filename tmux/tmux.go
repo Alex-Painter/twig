@@ -150,3 +150,15 @@ func (c *Client) CreateSession(sessionName string, windows []string, workdir str
 	_, err = c.runner.Run("tmux", "select-window", "-t", sessionName+":"+windows[0])
 	return err
 }
+
+// KillSession kills a tmux session with the given name.
+// Returns nil if the session doesn't exist (no-op).
+func (c *Client) KillSession(sessionName string) error {
+	// Check if session exists first - kill-session fails if it doesn't
+	if !c.SessionExists(sessionName) {
+		return nil
+	}
+
+	_, err := c.runner.Run("tmux", "kill-session", "-t", sessionName)
+	return err
+}

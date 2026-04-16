@@ -313,3 +313,22 @@ func CreateWorktree(repoPath, worktreeDir, branchName string) (string, error) {
 
 	return worktreePath, nil
 }
+
+// DeleteWorktree removes a git worktree at the given path.
+// If force is true, it will delete even with uncommitted changes.
+func DeleteWorktree(repoPath, worktreePath string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, worktreePath)
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete worktree: %s", output)
+	}
+	return nil
+}

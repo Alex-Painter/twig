@@ -115,3 +115,31 @@ func (m *Manager) resolveBranchName(input string) (string, error) {
 func IsPRReference(input string) bool {
 	return prPattern.MatchString(input)
 }
+
+// ErrCannotDeleteMain is returned when attempting to delete the main clone.
+var ErrCannotDeleteMain = fmt.Errorf("cannot delete main clone")
+
+// ErrDirtyWorktree is returned when attempting to delete a dirty worktree without force.
+var ErrDirtyWorktree = fmt.Errorf("worktree has uncommitted changes (use force to delete)")
+
+// Delete removes a worktree and kills its associated tmux session.
+// Returns ErrCannotDeleteMain if the worktree is the main clone.
+// Returns ErrDirtyWorktree if the worktree has uncommitted changes and force is false.
+func (m *Manager) Delete(wt git.Worktree, force bool) error {
+	// Block deletion of main clone
+	if wt.IsMain {
+		return ErrCannotDeleteMain
+	}
+
+	// Check for uncommitted changes
+	if wt.IsDirty && !force {
+		return ErrDirtyWorktree
+	}
+
+	// Kill the tmux session first (safe if it doesn't exist)
+	sessionName := m.config.SessionName(wt.Branch)
+	_ = m.tmuxClient.KillSession(sessionName)
+
+	// Delete the git worktree
+	return git.DeleteWorktree(m.config.Repo, wt.Path, force)
+}
