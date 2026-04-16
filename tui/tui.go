@@ -114,6 +114,19 @@ type Model struct {
 	busyMessage     string
 	spinner         spinner.Model
 	filter          string
+	// lastAction stores the last action that failed, for retry support.
+	// Nil if no retryable error is present.
+	lastAction retryableAction
+}
+
+// retryableAction represents an action that can be retried after failure.
+type retryableAction struct {
+	// description is shown in the UI (e.g., "create worktree 'foo'").
+	description string
+	// cmd is the command to re-run.
+	cmd tea.Cmd
+	// busyMessage is the message to show while retrying.
+	busyMessage string
 }
 
 // worktreesMsg is sent when worktrees are loaded.
@@ -234,6 +247,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Handle retry/dismiss when there's a failed action
+		if m.lastAction.cmd != nil {
+			switch msg.String() {
+			case "R":
+				// Retry the last action
+				action := m.lastAction
+				m.lastAction = retryableAction{}
+				m.statusMessage = ""
+				m.busy = true
+				m.busyMessage = action.busyMessage
+				return m, action.cmd
+			case "esc", "x":
+				// Dismiss error
+				m.lastAction = retryableAction{}
+				m.statusMessage = ""
+				return m, nil
+			}
+		}
+
 		// Handle list mode
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -248,6 +280,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.statusMessage = ""
+			m.lastAction = retryableAction{}
 			m.busy = true
 			m.busyMessage = "Refreshing..."
 			return m, m.loadWorktrees
@@ -311,22 +344,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to create worktree: %v", msg.err)
 			m.statusIsError = true
+			m.lastAction = retryableAction{
+				description: fmt.Sprintf("create '%s'", msg.branchName),
+				cmd:         m.createWorktree(msg.branchName),
+				busyMessage: fmt.Sprintf("Creating worktree for '%s'...", msg.branchName),
+			}
+			m.busy = false
+			m.busyMessage = ""
+			m.mode = modeList
+			return m, nil
+		}
+
+		// Build success message
+		m.statusMessage = fmt.Sprintf("Created worktree for '%s'", msg.branchName)
+
+		// Add hook result if any
+		hookMsg := msg.result.HookResult.FormatResult()
+		if hookMsg != "" {
+			m.statusMessage += "\n" + hookMsg
+		}
+
+		// Check if hook failed
+		if msg.result.HookResult.Error != nil {
+			m.statusIsError = true
 		} else {
-			// Build success message
-			m.statusMessage = fmt.Sprintf("Created worktree for '%s'", msg.branchName)
-
-			// Add hook result if any
-			hookMsg := msg.result.HookResult.FormatResult()
-			if hookMsg != "" {
-				m.statusMessage += "\n" + hookMsg
-			}
-
-			// Check if hook failed
-			if msg.result.HookResult.Error != nil {
-				m.statusIsError = true
-			} else {
-				m.statusIsError = false
-			}
+			m.statusIsError = false
 		}
 		m.mode = modeList
 		m.busyMessage = "Refreshing..."
@@ -336,10 +378,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to delete worktree: %v", msg.err)
 			m.statusIsError = true
-		} else {
-			m.statusMessage = fmt.Sprintf("Deleted worktree '%s'", msg.branch)
-			m.statusIsError = false
+			// Find the worktree by branch to build retry command
+			for _, wt := range m.worktrees {
+				if wt.Branch == msg.branch {
+					m.lastAction = retryableAction{
+						description: fmt.Sprintf("delete '%s'", msg.branch),
+						cmd:         m.deleteWorktree(wt, true), // force on retry since first attempt failed
+						busyMessage: fmt.Sprintf("Deleting worktree '%s'...", msg.branch),
+					}
+					break
+				}
+			}
+			m.busy = false
+			m.busyMessage = ""
+			m.mode = modeList
+			return m, nil
 		}
+		m.statusMessage = fmt.Sprintf("Deleted worktree '%s'", msg.branch)
+		m.statusIsError = false
 		m.mode = modeList
 		m.busyMessage = "Refreshing..."
 		return m, m.loadWorktrees
@@ -348,10 +404,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to fetch: %v", msg.err)
 			m.statusIsError = true
-		} else {
-			m.statusMessage = "Fetched all remotes"
-			m.statusIsError = false
+			m.lastAction = retryableAction{
+				description: "fetch all remotes",
+				cmd:         m.fetchAll,
+				busyMessage: "Fetching all remotes...",
+			}
+			m.busy = false
+			m.busyMessage = ""
+			return m, nil
 		}
+		m.statusMessage = "Fetched all remotes"
+		m.statusIsError = false
 		m.busyMessage = "Refreshing..."
 		return m, m.loadWorktrees
 
@@ -359,10 +422,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMessage = fmt.Sprintf("Failed to pull: %v", msg.err)
 			m.statusIsError = true
-		} else {
-			m.statusMessage = fmt.Sprintf("Pulled '%s'", msg.branch)
-			m.statusIsError = false
+			// Find worktree to retry
+			for _, wt := range m.worktrees {
+				if wt.Branch == msg.branch {
+					m.lastAction = retryableAction{
+						description: fmt.Sprintf("pull '%s'", msg.branch),
+						cmd:         m.pullWorktree(wt),
+						busyMessage: fmt.Sprintf("Pulling '%s'...", msg.branch),
+					}
+					break
+				}
+			}
+			m.busy = false
+			m.busyMessage = ""
+			return m, nil
 		}
+		m.statusMessage = fmt.Sprintf("Pulled '%s'", msg.branch)
+		m.statusIsError = false
 		m.busyMessage = "Refreshing..."
 		return m, m.loadWorktrees
 	}
@@ -560,7 +636,14 @@ func (m Model) View() string {
 		} else {
 			b.WriteString(successStyle.Render(m.statusMessage))
 		}
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+
+		// Retry/dismiss hint
+		if m.lastAction.cmd != nil {
+			b.WriteString(helpStyle.Render("R: retry • Esc/x: dismiss"))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 	}
 
 	// Help modal

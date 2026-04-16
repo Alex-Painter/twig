@@ -26,16 +26,11 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Pull current branch (p)
 - [x] Filter/search worktrees (/)
 - [x] Help modal (?)
+- [x] Inline error handling with retry (R) / dismiss (Esc)
 - [x] Loading spinner for async operations
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
-
-### Planned
-- [ ] Pull current branch (p)
-- [ ] Filter/search worktrees (/)
-- [ ] Help modal (?)
-- [ ] Inline error handling with retry/dismiss
 
 ## Installation
 
@@ -93,6 +88,8 @@ twig
 | `/` | Filter/search worktrees by branch name |
 | `?` | Show help modal |
 | `r` | Refresh worktree list |
+| `R` | Retry last failed action (when error shown) |
+| `Esc` / `x` | Dismiss error (when error shown) |
 | `q` | Quit |
 
 ## Development
