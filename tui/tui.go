@@ -3,7 +3,6 @@ package tui
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/Alex-Painter/twig/config"
@@ -35,6 +34,12 @@ var (
 
 	pathStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243"))
+
+	commitStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245"))
+
+	timeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("239"))
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
@@ -153,27 +158,29 @@ func (m Model) formatWorktreeRow(wt git.Worktree, selected bool) string {
 		dirty = dirtyStyle.Render("*")
 	}
 
-	// Shorten path for display
-	path := wt.Path
-	home := filepath.Dir(filepath.Dir(m.config.Repo)) // Go up two levels for shorter paths
-	if strings.HasPrefix(path, home) {
-		path = "~" + strings.TrimPrefix(path, home)
+	// Last commit info - truncate message if too long
+	commitMsg := wt.LastCommit.Message
+	if len(commitMsg) > 30 {
+		commitMsg = commitMsg[:27] + "..."
 	}
+	commitTime := wt.LastCommit.RelativeTime
 
 	// Apply styles based on selection
 	if selected {
 		if !wt.IsMain {
 			branch = selectedStyle.Render(branch)
 		}
-		path = selectedStyle.Render(path)
+		commitMsg = selectedStyle.Render(commitMsg)
+		commitTime = selectedStyle.Render(commitTime)
 	} else {
 		if !wt.IsMain {
 			branch = normalStyle.Render(branch)
 		}
-		path = pathStyle.Render(path)
+		commitMsg = commitStyle.Render(commitMsg)
+		commitTime = timeStyle.Render(commitTime)
 	}
 
-	return fmt.Sprintf("%-30s %s %s", branch, dirty, path)
+	return fmt.Sprintf("%-30s %s %-32s %s", branch, dirty, commitMsg, commitTime)
 }
 
 // Run starts the TUI application.

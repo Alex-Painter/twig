@@ -14,13 +14,12 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] List all worktrees with branch names and paths
 - [x] Visual indicator for main repository clone (★)
 - [x] Show dirty/clean status for each worktree (*)
+- [x] Show last commit message and relative time
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
 
 ### Planned
-
-- [ ] Show last commit info
 - [ ] Show commits ahead/behind remote
 - [ ] Show tmux session status (attached/detached)
 - [ ] Create worktree from branch name (n)

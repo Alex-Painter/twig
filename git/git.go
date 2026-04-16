@@ -22,6 +22,18 @@ type Worktree struct {
 
 	// IsDirty indicates if the worktree has uncommitted changes.
 	IsDirty bool
+
+	// LastCommit contains info about the most recent commit.
+	LastCommit CommitInfo
+}
+
+// CommitInfo contains information about a commit.
+type CommitInfo struct {
+	// Message is the commit message (first line only).
+	Message string
+
+	// RelativeTime is the human-readable relative time (e.g., "2 hours ago").
+	RelativeTime string
 }
 
 // ListWorktrees returns all worktrees for the repository at repoPath.
@@ -41,11 +53,16 @@ func ListWorktrees(repoPath string) ([]Worktree, error) {
 		return nil, err
 	}
 
-	// Populate dirty status for each worktree
+	// Populate dirty status and last commit for each worktree
 	for i := range worktrees {
 		dirty, err := IsDirty(worktrees[i].Path)
 		if err == nil {
 			worktrees[i].IsDirty = dirty
+		}
+
+		commit, err := GetLastCommit(worktrees[i].Path)
+		if err == nil {
+			worktrees[i].LastCommit = commit
 		}
 	}
 
@@ -133,4 +150,29 @@ func IsDirty(worktreePath string) (bool, error) {
 
 	// If there's any output, the worktree is dirty
 	return len(strings.TrimSpace(string(output))) > 0, nil
+}
+
+// GetLastCommit returns information about the most recent commit in the worktree.
+func GetLastCommit(worktreePath string) (CommitInfo, error) {
+	// Get commit message (first line) and relative time in one call
+	// Format: %s = subject, %cr = committer date relative
+	cmd := exec.Command("git", "log", "-1", "--format=%s|%cr")
+	cmd.Dir = worktreePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return CommitInfo{}, err
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 2)
+	info := CommitInfo{}
+
+	if len(parts) >= 1 {
+		info.Message = parts[0]
+	}
+	if len(parts) >= 2 {
+		info.RelativeTime = parts[1]
+	}
+
+	return info, nil
 }

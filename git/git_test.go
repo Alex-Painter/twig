@@ -347,3 +347,72 @@ func TestListWorktrees_IncludesDirtyStatus(t *testing.T) {
 		t.Error("expected dirty worktree to be marked dirty")
 	}
 }
+
+func TestGetLastCommit(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	commit, err := GetLastCommit(repoDir)
+	if err != nil {
+		t.Fatalf("GetLastCommit() returned error: %v", err)
+	}
+
+	if commit.Message != "Initial commit" {
+		t.Errorf("commit message = %q, want %q", commit.Message, "Initial commit")
+	}
+
+	if commit.RelativeTime == "" {
+		t.Error("expected relative time to be non-empty")
+	}
+}
+
+func TestGetLastCommit_MultipleCommits(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Create another commit
+	testFile := filepath.Join(repoDir, "second.txt")
+	if err := os.WriteFile(testFile, []byte("second"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	cmd := exec.Command("git", "add", ".")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+
+	cmd = exec.Command("git", "commit", "-m", "Second commit")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	commit, err := GetLastCommit(repoDir)
+	if err != nil {
+		t.Fatalf("GetLastCommit() returned error: %v", err)
+	}
+
+	if commit.Message != "Second commit" {
+		t.Errorf("commit message = %q, want %q", commit.Message, "Second commit")
+	}
+}
+
+func TestListWorktrees_IncludesLastCommit(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	worktrees, err := ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	if len(worktrees) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(worktrees))
+	}
+
+	if worktrees[0].LastCommit.Message != "Initial commit" {
+		t.Errorf("last commit message = %q, want %q", worktrees[0].LastCommit.Message, "Initial commit")
+	}
+
+	if worktrees[0].LastCommit.RelativeTime == "" {
+		t.Error("expected last commit relative time to be non-empty")
+	}
+}
