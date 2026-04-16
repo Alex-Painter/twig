@@ -23,6 +23,7 @@ const (
 	modeDeleteConfirm
 	modeDeleteForceConfirm
 	modeFilter
+	modeHelp
 )
 
 // Styles for the TUI
@@ -85,6 +86,15 @@ var (
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("203"))
+
+	modalStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("212")).
+			Padding(1, 2)
+
+	keyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("212")).
+			Bold(true)
 )
 
 // Model represents the TUI state.
@@ -214,6 +224,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleFilterInput(msg)
 		}
 
+		// Handle help mode - any key dismisses
+		if m.mode == modeHelp {
+			// ctrl+c should still quit
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			m.mode = modeList
+			return m, nil
+		}
+
 		// Handle list mode
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -248,6 +268,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.pullWorktree(wt)
 		case "/":
 			m.mode = modeFilter
+			m.statusMessage = ""
+		case "?":
+			m.mode = modeHelp
 			m.statusMessage = ""
 		case "n":
 			m.mode = modeCreate
@@ -479,6 +502,36 @@ func (m Model) pullWorktree(wt git.Worktree) tea.Cmd {
 	}
 }
 
+// renderHelp renders the help modal.
+func (m Model) renderHelp() string {
+	keys := []struct {
+		key  string
+		desc string
+	}{
+		{"↑/k", "Move cursor up"},
+		{"↓/j", "Move cursor down"},
+		{"n", "Create new worktree (branch name or #PR)"},
+		{"d", "Delete selected worktree"},
+		{"f", "Fetch all remotes"},
+		{"p", "Pull selected worktree"},
+		{"/", "Filter worktrees by branch name"},
+		{"r", "Refresh list"},
+		{"?", "Show this help"},
+		{"q", "Quit"},
+	}
+
+	var content strings.Builder
+	content.WriteString(titleStyle.Render("Keybindings"))
+	content.WriteString("\n")
+	for _, k := range keys {
+		content.WriteString(fmt.Sprintf("  %s  %s\n", keyStyle.Render(fmt.Sprintf("%-5s", k.key)), k.desc))
+	}
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("Press any key to close"))
+
+	return modalStyle.Render(content.String())
+}
+
 // View renders the TUI.
 func (m Model) View() string {
 	var b strings.Builder
@@ -508,6 +561,12 @@ func (m Model) View() string {
 			b.WriteString(successStyle.Render(m.statusMessage))
 		}
 		b.WriteString("\n\n")
+	}
+
+	// Help modal
+	if m.mode == modeHelp {
+		b.WriteString(m.renderHelp())
+		return b.String()
 	}
 
 	// Create mode input
@@ -573,7 +632,7 @@ func (m Model) View() string {
 	if m.mode == modeFilter {
 		b.WriteString(helpStyle.Render("type to filter • ctrl+u: clear • Enter/Esc: done"))
 	} else {
-		b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • p: pull • /: filter • r: refresh • q: quit"))
+		b.WriteString(helpStyle.Render("?: help • /: filter • n: new • d: delete • f: fetch • p: pull • r: refresh • q: quit"))
 	}
 
 	return b.String()

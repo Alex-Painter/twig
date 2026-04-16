@@ -25,6 +25,7 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Fetch all remotes (f)
 - [x] Pull current branch (p)
 - [x] Filter/search worktrees (/)
+- [x] Help modal (?)
 - [x] Loading spinner for async operations
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
@@ -90,6 +91,7 @@ twig
 | `f` | Fetch all remotes |
 | `p` | Pull selected worktree's branch |
 | `/` | Filter/search worktrees by branch name |
+| `?` | Show help modal |
 | `r` | Refresh worktree list |
 | `q` | Quit |
 
