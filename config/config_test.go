@@ -63,8 +63,8 @@ worktree_dir = "/path/to/worktrees"
 	}
 
 	// Check defaults were applied
-	if cfg.SessionPattern != "{repo}-{branch}" {
-		t.Errorf("SessionPattern = %q, want default %q", cfg.SessionPattern, "{repo}-{branch}")
+	if cfg.SessionPattern != "{repo}:{branch}" {
+		t.Errorf("SessionPattern = %q, want default %q", cfg.SessionPattern, "{repo}:{branch}")
 	}
 	if len(cfg.Windows) != 3 || cfg.Windows[0] != "editor" || cfg.Windows[1] != "dev" || cfg.Windows[2] != "shell" {
 		t.Errorf("Windows = %v, want default [editor dev shell]", cfg.Windows)
@@ -189,10 +189,10 @@ func TestSessionName(t *testing.T) {
 	}{
 		{
 			name:           "default pattern",
-			sessionPattern: "{repo}-{branch}",
+			sessionPattern: "{repo}:{branch}",
 			repo:           "/path/to/maverick",
 			branch:         "feature-auth",
-			want:           "maverick-feature-auth",
+			want:           "maverick:feature-auth",
 		},
 		{
 			name:           "custom pattern",

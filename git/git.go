@@ -233,3 +233,83 @@ func GetAheadBehind(worktreePath string) (int, int, error) {
 
 	return ahead, behind, nil
 }
+
+// RemoteBranchExists checks if a branch exists on the remote.
+func RemoteBranchExists(repoPath, branchName string) bool {
+	cmd := exec.Command("git", "ls-remote", "--exit-code", "--heads", "origin", branchName)
+	cmd.Dir = repoPath
+	err := cmd.Run()
+	return err == nil
+}
+
+// LocalBranchExists checks if a branch exists locally.
+func LocalBranchExists(repoPath, branchName string) bool {
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+	cmd.Dir = repoPath
+	err := cmd.Run()
+	return err == nil
+}
+
+// CreateWorktree creates a new git worktree for the given branch.
+// It follows this logic:
+//  1. If remote branch exists, fetch it and create worktree tracking remote
+//  2. If local branch exists, create worktree using local branch
+//  3. Otherwise, create new branch from HEAD
+//
+// Returns the path to the created worktree.
+func CreateWorktree(repoPath, worktreeDir, branchName string) (string, error) {
+	worktreePath := filepath.Join(worktreeDir, branchName)
+
+	// Check if remote branch exists
+	if RemoteBranchExists(repoPath, branchName) {
+		// Fetch the remote branch
+		cmd := exec.Command("git", "fetch", "origin", branchName)
+		cmd.Dir = repoPath
+		if err := cmd.Run(); err != nil {
+			return "", fmt.Errorf("failed to fetch remote branch: %w", err)
+		}
+
+		// Check if local branch already exists
+		if LocalBranchExists(repoPath, branchName) {
+			// Use existing local branch
+			cmd = exec.Command("git", "worktree", "add", worktreePath, branchName)
+			cmd.Dir = repoPath
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("failed to create worktree: %s", output)
+			}
+		} else {
+			// Create local branch tracking remote
+			cmd = exec.Command("git", "worktree", "add", "--track", "-b", branchName, worktreePath, "origin/"+branchName)
+			cmd.Dir = repoPath
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("failed to create worktree: %s", output)
+			}
+		}
+
+		// Set upstream tracking
+		cmd = exec.Command("git", "branch", "--set-upstream-to=origin/"+branchName, branchName)
+		cmd.Dir = worktreePath
+		cmd.Run() // Ignore error, might already be set
+
+		return worktreePath, nil
+	}
+
+	// Check if local branch exists
+	if LocalBranchExists(repoPath, branchName) {
+		cmd := exec.Command("git", "worktree", "add", worktreePath, branchName)
+		cmd.Dir = repoPath
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to create worktree: %s", output)
+		}
+		return worktreePath, nil
+	}
+
+	// Create new branch from HEAD
+	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to create worktree: %s", output)
+	}
+
+	return worktreePath, nil
+}

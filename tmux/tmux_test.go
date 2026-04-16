@@ -180,3 +180,53 @@ func TestSessionStatus_String(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateSession(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux new-session -d -s test-session -n editor -c /path/to/dir", "", nil)
+	mock.SetResponse("tmux new-window -t test-session -n dev -c /path/to/dir", "", nil)
+	mock.SetResponse("tmux new-window -t test-session -n shell -c /path/to/dir", "", nil)
+	mock.SetResponse("tmux select-window -t test-session:editor", "", nil)
+
+	client := NewClientWithRunner(mock)
+	err := client.CreateSession("test-session", []string{"editor", "dev", "shell"}, "/path/to/dir")
+	if err != nil {
+		t.Errorf("CreateSession() returned error: %v", err)
+	}
+}
+
+func TestCreateSession_SingleWindow(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux new-session -d -s test-session -n shell -c /path/to/dir", "", nil)
+	mock.SetResponse("tmux select-window -t test-session:shell", "", nil)
+
+	client := NewClientWithRunner(mock)
+	err := client.CreateSession("test-session", []string{"shell"}, "/path/to/dir")
+	if err != nil {
+		t.Errorf("CreateSession() returned error: %v", err)
+	}
+}
+
+func TestCreateSession_DefaultWindow(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux new-session -d -s test-session -n shell -c /path/to/dir", "", nil)
+	mock.SetResponse("tmux select-window -t test-session:shell", "", nil)
+
+	client := NewClientWithRunner(mock)
+	err := client.CreateSession("test-session", []string{}, "/path/to/dir")
+	if err != nil {
+		t.Errorf("CreateSession() with empty windows returned error: %v", err)
+	}
+}
+
+func TestCreateSession_Error(t *testing.T) {
+	mock := NewMockRunner()
+	mock.SetResponse("tmux new-session -d -s test-session -n editor -c /path/to/dir",
+		"", errors.New("duplicate session"))
+
+	client := NewClientWithRunner(mock)
+	err := client.CreateSession("test-session", []string{"editor"}, "/path/to/dir")
+	if err == nil {
+		t.Error("expected CreateSession() to return error")
+	}
+}

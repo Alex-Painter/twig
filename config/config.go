@@ -83,7 +83,7 @@ func Load(path string) (*Config, error) {
 // applyDefaults sets default values for optional fields.
 func (c *Config) applyDefaults() {
 	if c.SessionPattern == "" {
-		c.SessionPattern = "{repo}-{branch}"
+		c.SessionPattern = "{repo}:{branch}"
 	}
 
 	if len(c.Windows) == 0 {

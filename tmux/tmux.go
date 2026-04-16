@@ -123,3 +123,30 @@ func (c *Client) ListSessions() map[string]SessionStatus {
 	}
 	return result
 }
+
+// CreateSession creates a new tmux session with the given name and windows.
+// The session starts in the specified working directory.
+// The first window is created with the session, additional windows are added after.
+func (c *Client) CreateSession(sessionName string, windows []string, workdir string) error {
+	if len(windows) == 0 {
+		windows = []string{"shell"}
+	}
+
+	// Create session with first window
+	_, err := c.runner.Run("tmux", "new-session", "-d", "-s", sessionName, "-n", windows[0], "-c", workdir)
+	if err != nil {
+		return err
+	}
+
+	// Create additional windows
+	for _, windowName := range windows[1:] {
+		_, err := c.runner.Run("tmux", "new-window", "-t", sessionName, "-n", windowName, "-c", workdir)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Select first window
+	_, err = c.runner.Run("tmux", "select-window", "-t", sessionName+":"+windows[0])
+	return err
+}

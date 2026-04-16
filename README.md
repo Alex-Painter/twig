@@ -17,12 +17,14 @@ A TUI application to manage git worktrees and tmux sessions.
 - [x] Show last commit message and relative time
 - [x] Show commits ahead/behind remote (↑↓ indicators, ? when unknown)
 - [x] Show tmux session status (attached/detached)
+- [x] Create worktree from branch name (n)
+- [x] Auto-create tmux session with configured windows
 - [x] Keyboard navigation (↑/↓ or j/k)
 - [x] Refresh list (r)
 - [x] Quit (q)
 
 ### Planned
-- [ ] Create worktree from branch name (n)
+
 - [ ] Create worktree from GitHub PR number (#123)
 - [ ] Post-create hooks for dependency installation
 - [ ] Delete worktree with safety checks (d)
@@ -57,9 +59,9 @@ repo = "~/workspace/myproject"
 # Required: directory where worktrees will be created
 worktree_dir = "~/workspace/worktrees/myproject"
 
-# Optional: tmux session naming pattern (default: "{repo}-{branch}")
+# Optional: tmux session naming pattern (default: "{repo}:{branch}")
 # Supports {repo} and {branch} placeholders
-session_pattern = "{repo}-{branch}"
+session_pattern = "{repo}:{branch}"
 
 # Optional: tmux windows to create (default: ["editor", "dev", "shell"])
 windows = ["editor", "dev", "shell"]
@@ -81,6 +83,7 @@ twig
 |-----|--------|
 | `↑` / `k` | Move cursor up |
 | `↓` / `j` | Move cursor down |
+| `n` | Create new worktree |
 | `r` | Refresh worktree list |
 | `q` | Quit |
 

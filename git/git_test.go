@@ -552,3 +552,85 @@ func TestListWorktrees_IncludesAheadBehind(t *testing.T) {
 		t.Logf("ahead=%d, behind=%d (may vary based on git config)", worktrees[0].Ahead, worktrees[0].Behind)
 	}
 }
+
+func TestRemoteBranchExists(t *testing.T) {
+	// Without a remote, should return false
+	repoDir := setupTestRepo(t)
+
+	if RemoteBranchExists(repoDir, "main") {
+		t.Log("RemoteBranchExists returned true (may have remote configured)")
+	}
+
+	if RemoteBranchExists(repoDir, "nonexistent-branch-xyz") {
+		t.Error("expected RemoteBranchExists to return false for nonexistent branch")
+	}
+}
+
+func TestLocalBranchExists(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// Get current branch
+	branch, _ := GetCurrentBranch(repoDir)
+
+	if !LocalBranchExists(repoDir, branch) {
+		t.Errorf("expected LocalBranchExists to return true for %s", branch)
+	}
+
+	if LocalBranchExists(repoDir, "nonexistent-branch-xyz") {
+		t.Error("expected LocalBranchExists to return false for nonexistent branch")
+	}
+}
+
+func TestCreateWorktree_NewBranch(t *testing.T) {
+	repoDir := setupTestRepo(t)
+	worktreeDir := t.TempDir()
+
+	path, err := CreateWorktree(repoDir, worktreeDir, "feature-new")
+	if err != nil {
+		t.Fatalf("CreateWorktree() returned error: %v", err)
+	}
+
+	expectedPath := filepath.Join(worktreeDir, "feature-new")
+	if path != expectedPath {
+		t.Errorf("path = %q, want %q", path, expectedPath)
+	}
+
+	// Verify worktree was created
+	worktrees, err := ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	found := false
+	for _, wt := range worktrees {
+		if wt.Branch == "feature-new" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to find worktree with branch 'feature-new'")
+	}
+}
+
+func TestCreateWorktree_ExistingLocalBranch(t *testing.T) {
+	repoDir := setupTestRepo(t)
+	worktreeDir := t.TempDir()
+
+	// Create a local branch first
+	cmd := exec.Command("git", "branch", "existing-branch")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create branch: %v", err)
+	}
+
+	path, err := CreateWorktree(repoDir, worktreeDir, "existing-branch")
+	if err != nil {
+		t.Fatalf("CreateWorktree() returned error: %v", err)
+	}
+
+	expectedPath := filepath.Join(worktreeDir, "existing-branch")
+	if path != expectedPath {
+		t.Errorf("path = %q, want %q", path, expectedPath)
+	}
+}
