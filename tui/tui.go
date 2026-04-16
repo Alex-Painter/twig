@@ -124,6 +124,11 @@ type deleteResultMsg struct {
 	err    error
 }
 
+// fetchResultMsg is sent when fetch completes.
+type fetchResultMsg struct {
+	err error
+}
+
 // New creates a new TUI model.
 func New(cfg *config.Config) Model {
 	tmuxClient := tmux.NewClient()
@@ -197,6 +202,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.busy = true
 			m.busyMessage = "Refreshing..."
 			return m, m.loadWorktrees
+		case "f":
+			m.statusMessage = ""
+			m.busy = true
+			m.busyMessage = "Fetching all remotes..."
+			return m, m.fetchAll
 		case "n":
 			m.mode = modeCreate
 			m.input = ""
@@ -264,6 +274,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusIsError = false
 		}
 		m.mode = modeList
+		m.busyMessage = "Refreshing..."
+		return m, m.loadWorktrees
+
+	case fetchResultMsg:
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Failed to fetch: %v", msg.err)
+			m.statusIsError = true
+		} else {
+			m.statusMessage = "Fetched all remotes"
+			m.statusIsError = false
+		}
 		m.busyMessage = "Refreshing..."
 		return m, m.loadWorktrees
 	}
@@ -347,6 +368,12 @@ func (m Model) createWorktree(branchName string) tea.Cmd {
 	}
 }
 
+// fetchAll fetches all remotes.
+func (m Model) fetchAll() tea.Msg {
+	err := git.FetchAll(m.config.Repo)
+	return fetchResultMsg{err: err}
+}
+
 // View renders the TUI.
 func (m Model) View() string {
 	var b strings.Builder
@@ -422,7 +449,7 @@ func (m Model) View() string {
 	}
 
 	// Help
-	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • r: refresh • q: quit"))
+	b.WriteString(helpStyle.Render("↑/↓: navigate • n: new • d: delete • f: fetch • r: refresh • q: quit"))
 
 	return b.String()
 }

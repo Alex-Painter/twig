@@ -332,3 +332,16 @@ func DeleteWorktree(repoPath, worktreePath string, force bool) error {
 	}
 	return nil
 }
+
+// FetchAll fetches from all remotes for the given repository.
+// This updates the ahead/behind status for all worktrees.
+func FetchAll(repoPath string) error {
+	cmd := exec.Command("git", "fetch", "--all")
+	cmd.Dir = repoPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to fetch: %s", output)
+	}
+	return nil
+}

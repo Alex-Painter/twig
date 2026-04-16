@@ -695,3 +695,44 @@ func TestDeleteWorktree_WithUncommittedChanges(t *testing.T) {
 		t.Fatalf("expected force delete to succeed: %v", err)
 	}
 }
+
+func TestFetchAll_NoRemote(t *testing.T) {
+	repoDir := setupTestRepo(t)
+
+	// FetchAll on a repo with no remotes should succeed (no-op)
+	err := FetchAll(repoDir)
+	if err != nil {
+		t.Logf("FetchAll() without remotes returned error (may be expected): %v", err)
+	}
+}
+
+func TestFetchAll_WithRemote(t *testing.T) {
+	// Create a "remote" repo
+	remoteDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare")
+	cmd.Dir = remoteDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init bare repo: %v", err)
+	}
+
+	// Create local repo and add remote
+	repoDir := setupTestRepo(t)
+	cmd = exec.Command("git", "remote", "add", "origin", remoteDir)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to add remote: %v", err)
+	}
+
+	// Push to create the remote branch
+	branch, _ := GetCurrentBranch(repoDir)
+	cmd = exec.Command("git", "push", "-u", "origin", branch)
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to push: %v", err)
+	}
+
+	// FetchAll should succeed
+	if err := FetchAll(repoDir); err != nil {
+		t.Errorf("FetchAll() returned error: %v", err)
+	}
+}
