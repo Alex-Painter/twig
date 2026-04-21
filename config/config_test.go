@@ -208,6 +208,20 @@ func TestSessionName(t *testing.T) {
 			branch:         "main",
 			want:           "myproject",
 		},
+		{
+			name:           "branch with slash",
+			sessionPattern: "{repo}:{branch}",
+			repo:           "/path/to/maverick",
+			branch:         "feat/login",
+			want:           "maverick:feat-login",
+		},
+		{
+			name:           "branch with multiple slashes",
+			sessionPattern: "{repo}:{branch}",
+			repo:           "/path/to/maverick",
+			branch:         "fix/bug/123",
+			want:           "maverick:fix-bug-123",
+		},
 	}
 
 	for _, tt := range tests {

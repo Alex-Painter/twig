@@ -150,9 +150,12 @@ func (c *Config) RepoName() string {
 }
 
 // SessionName generates a tmux session name for the given branch.
+// Forward slashes in the branch are replaced with hyphens to avoid
+// confusion with tmux's window addressing syntax.
 func (c *Config) SessionName(branch string) string {
+	safeBranch := strings.ReplaceAll(branch, "/", "-")
 	name := c.SessionPattern
 	name = strings.ReplaceAll(name, "{repo}", c.RepoName())
-	name = strings.ReplaceAll(name, "{branch}", branch)
+	name = strings.ReplaceAll(name, "{branch}", safeBranch)
 	return name
 }

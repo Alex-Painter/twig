@@ -250,15 +250,27 @@ func LocalBranchExists(repoPath, branchName string) bool {
 	return err == nil
 }
 
+// sanitizeBranchForPath converts a branch name into a safe single-level
+// directory name. Forward slashes (common in branches like "feat/login")
+// are replaced with hyphens so the worktree isn't created as a nested
+// directory structure.
+func sanitizeBranchForPath(branchName string) string {
+	return strings.ReplaceAll(branchName, "/", "-")
+}
+
 // CreateWorktree creates a new git worktree for the given branch.
 // It follows this logic:
 //  1. If remote branch exists, fetch it and create worktree tracking remote
 //  2. If local branch exists, create worktree using local branch
 //  3. Otherwise, create new branch from HEAD
 //
+// Branch names containing forward slashes are sanitized for the directory
+// name (e.g. "feat/login" creates the worktree at "feat-login"), but the
+// actual git branch keeps its original name.
+//
 // Returns the path to the created worktree.
 func CreateWorktree(repoPath, worktreeDir, branchName string) (string, error) {
-	worktreePath := filepath.Join(worktreeDir, branchName)
+	worktreePath := filepath.Join(worktreeDir, sanitizeBranchForPath(branchName))
 
 	// Check if remote branch exists
 	if RemoteBranchExists(repoPath, branchName) {

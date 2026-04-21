@@ -613,6 +613,77 @@ func TestCreateWorktree_NewBranch(t *testing.T) {
 	}
 }
 
+func TestSanitizeBranchForPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"feature-auth", "feature-auth"},
+		{"feat/login", "feat-login"},
+		{"fix/bug/123", "fix-bug-123"},
+		{"main", "main"},
+		{"a/b/c/d", "a-b-c-d"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := sanitizeBranchForPath(tt.input); got != tt.want {
+				t.Errorf("sanitizeBranchForPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreateWorktree_BranchWithSlashes(t *testing.T) {
+	repoDir := setupTestRepo(t)
+	worktreeDir := t.TempDir()
+
+	branchName := "feat/login-page"
+	path, err := CreateWorktree(repoDir, worktreeDir, branchName)
+	if err != nil {
+		t.Fatalf("CreateWorktree() returned error: %v", err)
+	}
+
+	// Path should use hyphen, not slash (no nested directory)
+	expectedPath := filepath.Join(worktreeDir, "feat-login-page")
+	if path != expectedPath {
+		t.Errorf("path = %q, want %q", path, expectedPath)
+	}
+
+	// The worktree dir should exist as a single flat directory
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("worktree dir should exist at %s: %v", path, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("%s should be a directory", path)
+	}
+
+	// The nested "feat/login-page" path should NOT exist
+	nestedPath := filepath.Join(worktreeDir, "feat", "login-page")
+	if _, err := os.Stat(nestedPath); !os.IsNotExist(err) {
+		t.Errorf("nested path %q should not exist", nestedPath)
+	}
+
+	// But the git branch should still be "feat/login-page" (with slash)
+	worktrees, err := ListWorktrees(repoDir)
+	if err != nil {
+		t.Fatalf("ListWorktrees() returned error: %v", err)
+	}
+
+	found := false
+	for _, wt := range worktrees {
+		if wt.Branch == branchName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find worktree with branch %q (with slash)", branchName)
+	}
+}
+
 func TestCreateWorktree_ExistingLocalBranch(t *testing.T) {
 	repoDir := setupTestRepo(t)
 	worktreeDir := t.TempDir()
