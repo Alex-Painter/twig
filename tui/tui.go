@@ -773,6 +773,12 @@ func (m Model) renderContent() string {
 			b.WriteString(normalStyle.Render(cursor))
 			b.WriteString(row)
 			b.WriteString("\n")
+
+			// Show path below selected row
+			if i == m.cursor {
+				b.WriteString(pathStyle.Render("  " + wt.Path))
+				b.WriteString("\n")
+			}
 		}
 	}
 
